@@ -43,49 +43,66 @@ export default function QA() {
   const [submitting, setSubmitting] = useState(false);
 
   const fetchQuestions = async () => {
-    const { data: questionsData } = await supabase
-      .from("questions")
-      .select("*")
-      .eq("is_hidden", false)
-      .order("created_at", { ascending: false });
+    try {
+      const { data: questionsData, error } = await supabase
+        .from("questions")
+        .select("*")
+        .eq("is_hidden", false)
+        .order("created_at", { ascending: false });
 
-    if (questionsData) {
-      // Fetch profiles and answer counts in parallel
-      const withData = await Promise.all(
-        questionsData.map(async (q) => {
-          const [{ data: profileData }, { count }] = await Promise.all([
-            supabase.from("profiles").select("display_name, avatar_url").eq("user_id", q.author_id).single(),
-            supabase.from("answers").select("*", { count: "exact", head: true }).eq("question_id", q.id),
-          ]);
-          return { ...q, profiles: profileData ?? null, answer_count: count ?? 0 };
-        })
-      );
-      setQuestions(withData as Question[]);
+      if (error) throw error;
+
+      if (questionsData) {
+        const withData = await Promise.all(
+          questionsData.map(async (q) => {
+            const [{ data: profileData }, { count }] = await Promise.all([
+              supabase.from("profiles").select("display_name, avatar_url").eq("user_id", q.author_id).maybeSingle(),
+              supabase.from("answers").select("*", { count: "exact", head: true }).eq("question_id", q.id),
+            ]);
+            return { ...q, profiles: profileData ?? null, answer_count: count ?? 0 };
+          })
+        );
+        setQuestions(withData as Question[]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch questions:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { fetchQuestions(); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    setSubmitting(true);
-
-    const { error } = await supabase
-      .from("questions")
-      .insert({ title, body, author_id: user.id });
-
-    if (error) {
-      toast({ title: "Error posting question", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Question posted!" });
-      setTitle("");
-      setBody("");
-      setShowModal(false);
-      fetchQuestions();
+    if (!user) {
+      toast({ title: "You must be logged in to post a question", variant: "destructive" });
+      return;
     }
-    setSubmitting(false);
+    if (!title.trim()) {
+      toast({ title: "Please enter a title", variant: "destructive" });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("questions")
+        .insert({ title: title.trim(), body: body.trim(), author_id: user.id });
+
+      if (error) {
+        toast({ title: "Error posting question", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Question posted!" });
+        setTitle("");
+        setBody("");
+        setShowModal(false);
+        fetchQuestions();
+      }
+    } catch (err) {
+      toast({ title: "Unexpected error", description: String(err), variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
