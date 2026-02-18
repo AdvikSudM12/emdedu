@@ -38,32 +38,40 @@ export default function Profile() {
     if (!user) return;
     setLoading(true);
 
-    let avatarUrl = profile?.avatar_url ?? null;
+    try {
+      let avatarUrl = profile?.avatar_url ?? null;
 
-    if (avatarFile) {
-      const ext = avatarFile.name.split(".").pop();
-      const path = `${user.id}/avatar.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(path, avatarFile, { upsert: true });
-      if (!uploadError) {
-        const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-        avatarUrl = data.publicUrl;
+      if (avatarFile) {
+        const ext = avatarFile.name.split(".").pop();
+        const path = `${user.id}/avatar.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(path, avatarFile, { upsert: true });
+        if (!uploadError) {
+          const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+          avatarUrl = data.publicUrl;
+        }
       }
-    }
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ display_name: displayName || null, bio: bio || null, avatar_url: avatarUrl })
-      .eq("user_id", user.id);
+      const { error } = await supabase
+        .from("profiles")
+        .upsert(
+          { user_id: user.id, display_name: displayName || null, bio: bio || null, avatar_url: avatarUrl },
+          { onConflict: "user_id" }
+        );
 
-    if (error) {
-      toast({ title: "Error saving profile", description: error.message, variant: "destructive" });
-    } else {
-      await refreshProfile();
-      toast({ title: "Profile saved!" });
+      if (error) {
+        toast({ title: "Ошибка сохранения", description: error.message, variant: "destructive" });
+      } else {
+        refreshProfile(); // не ждём — чтобы не блокировать UI
+        toast({ title: "Профиль сохранён!" });
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Неизвестная ошибка";
+      toast({ title: "Ошибка", description: message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
