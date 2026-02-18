@@ -38,15 +38,30 @@ export default function AdminUsers() {
   useEffect(() => { fetchUsers(); }, []);
 
   const changeRole = async (userId: string, newRole: "admin" | "user") => {
-    // Remove all existing roles for this user
-    await supabase.from("user_roles").delete().eq("user_id", userId);
-    // Insert new role
-    const { error } = await supabase.from("user_roles").insert({ user_id: userId, role: newRole });
-    if (error) {
-      toast({ title: "Error changing role", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: `Role changed to ${newRole}` });
-      fetchUsers();
+    const action = newRole === "admin" ? "grant" : "revoke";
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/set-admin`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ user_id: userId, action }),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        toast({ title: "Error changing role", description: json.error, variant: "destructive" });
+      } else {
+        toast({ title: `Role changed to ${newRole}` });
+        fetchUsers();
+      }
+    } catch (err) {
+      toast({ title: "Network error", description: String(err), variant: "destructive" });
     }
   };
 
