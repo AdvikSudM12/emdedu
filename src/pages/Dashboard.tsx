@@ -45,10 +45,7 @@ export default function Dashboard() {
         supabase.from("lessons").select("*", { count: "exact", head: true }),
         supabase.from("wiki_articles").select("*", { count: "exact", head: true }),
         supabase.from("lessons").select("*").order("created_at", { ascending: false }).limit(4),
-        supabase.from("questions").select("id", { count: "exact", head: true })
-          .not("id", "in",
-            `(${supabase.from("answers").select("question_id")})`
-          ),
+        supabase.from("questions").select("id", { count: "exact", head: true }).eq("is_hidden", false),
       ]);
 
       setStats({
